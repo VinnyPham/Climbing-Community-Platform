@@ -5,17 +5,22 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Real routes columns: id, wall, tag_color, active, sends, time_created, grade
+// There is no wall_section / color / name / is_active / setter / description
+// column on routes — this maps the raw row onto the shape the rest of the
+// app expects, so every route object (fetched or just-created) looks the same.
 function normalizeRoute(route) {
   if (!route) return route;
-  const normalizedColor = route.color || route.hold_color || route.tag_color || null;
+  const color = route.tag_color || null;
+  const label = color
+    ? color.charAt(0).toUpperCase() + color.slice(1)
+    : (route.grade || 'Route');
   return {
     ...route,
-    wall_section: route.wall_section || route.wall || '',
-    pin_x: route.pin_x != null ? route.pin_x : route.x != null ? route.x * 100 : null,
-    pin_y: route.pin_y != null ? route.pin_y : route.y != null ? route.y * 100 : null,
-    color: normalizedColor,
-    is_active: route.is_active != null ? route.is_active : route.active != null ? route.active : null,
-    name: route.name || route.description || route.wall || '',
+    wall_section: route.wall || '',
+    color,
+    active: route.active ?? null,
+    name: route.name || `${label} route`,
   };
 }
 
@@ -54,8 +59,8 @@ export const updateProfile = (userId, updates) =>
   supabase.from('profiles').update(updates).eq('id', userId);
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-// Table: routes (id uuid PK, name text, grade text, color text, wall_section text,
-//                setter text, set_date date, is_active bool, description text, created_at timestamptz)
+// Table: routes (id uuid PK, wall text, tag_color text, active bool,
+//                sends smallint, time_created timestamptz, grade text)
 
 export const getActiveRoutes = () =>
   supabase
@@ -79,14 +84,22 @@ export const getRoute = (routeId) =>
     }));
 
 export const createRoute = (route) =>
-  supabase.from('routes').insert(route).select().single();
+  supabase
+    .from('routes')
+    .insert(route)
+    .select()
+    .single()
+    .then(result => ({
+      ...result,
+      data: normalizeRoute(result.data),
+    }));
 
 export const archiveRoute = (routeId) =>
-  supabase.from('routes').update({ is_active: false }).eq('id', routeId);
+  supabase.from('routes').update({ active: false }).eq('id', routeId);
 
 // ─── Sends ────────────────────────────────────────────────────────────────────
 // Table: sends (id uuid PK, user_id uuid → profiles.id, route_id uuid → routes.id,
-//               attempts int, created_at timestamptz)
+//               attempts int, created_at timestamp)
 
 export const logSend = async ({ userId, routeId, attempts = 1 }) => {
   const normalizedAttempts = Number(attempts) || 1;
@@ -128,7 +141,7 @@ export const getUserSends = (userId) =>
     .from('sends')
     .select(`
       *,
-      routes (id, name, grade, color, wall_section, is_active)
+      routes (id, grade, tag_color, wall, active)
     `)
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
@@ -139,7 +152,7 @@ export const getRecentSends = (limit = 30) =>
     .select(`
       *,
       profiles!sends_user_id_fkey (id, username, avatar_url),
-      routes (id, wall, grade, tag_color, hold_color)
+      routes (id, wall, grade, tag_color)
     `)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -153,22 +166,20 @@ export const getRouteSends = (routeId) =>
 
 // ─── Clips ────────────────────────────────────────────────────────────────────
 // Table: clips (id uuid PK, user_id uuid → profiles.id, route_id uuid → routes.id,
-//               video_url text, thumbnail_url text, caption text, created_at timestamptz)
+//               video_url text, caption text, created_at timestamptz)
+// Note: there is no thumbnail_url column — don't pass thumbnailUrl to postClip
+// until one exists, or the insert will fail on an unknown column.
 
-export const postClip = ({ userId, routeId, videoUrl, thumbnailUrl = null, caption = '' }) => {
-  const clip = {
-    user_id: userId,
-    route_id: routeId,
-    video_url: videoUrl,
-    caption,
-  };
-
-  if (thumbnailUrl) {
-    clip.thumbnail_url = thumbnailUrl;
-  }
-
-  return supabase.from('clips').insert(clip).throwOnError();
-};
+export const postClip = ({ userId, routeId, videoUrl, caption = '' }) =>
+  supabase
+    .from('clips')
+    .insert({
+      user_id: userId,
+      route_id: routeId,
+      video_url: videoUrl,
+      caption,
+    })
+    .throwOnError();
 
 export const deleteClip = (clipId) =>
   supabase.from('clips').delete().eq('id', clipId);
@@ -176,11 +187,14 @@ export const deleteClip = (clipId) =>
 export const getRecentClips = (limit = 20) =>
   supabase
     .from('clips')
-  .select('*')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
 export const getUserClips = (userId) =>
   supabase
     .from('clips')
-    .select(`*, routes (id, name, grade, color, wall_section)`)
+    .select(`*, routes (id, grade, tag_color, wall)`)
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 

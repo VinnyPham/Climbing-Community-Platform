@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
-import { getRecentSends, getActiveRoutes, getRecentClips } from '../services/supabase';
+import { getUserClips, getProfile } from '../services/supabase';
 import { supabase } from '../services/supabase';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -156,38 +156,105 @@ function RouteRow({ route, onClick }) {
   );
 }
 
-// ─── Clip card ─────────────────────────────────────────────────────────────────
-function ClipCard({ clip }) {
-  const { profiles: user, routes: route } = clip;
+// A direct video file (Supabase Storage uploads, or a pasted link ending in
+// a video extension) can be played inline with a plain <video> tag. A link
+// to something like YouTube or Instagram can't — those need their own
+// embed/iframe, which is out of scope here — so those still open in a new tab.
+function isDirectVideoUrl(url) {
+  if (!url) return false;
+  return /\.(mp4|mov|webm|m4v|ogg)(\?.*)?$/i.test(url) || url.includes('/storage/v1/object/');
+}
+
+function ClipRow({ clip, avatarUrl, username }) {
+  const [expanded, setExpanded] = useState(false);
+  const route = clip.routes || clip.route;
+  const playableInline = isDirectVideoUrl(clip.video_url);
+
+  const handleClick = (e) => {
+    if (playableInline) {
+      e.preventDefault();
+      setExpanded(v => !v);
+    }
+    // otherwise let the <a> follow through and open in a new tab
+  };
+
   return (
-    <div className="card" style={{ overflow: 'hidden' }}>
-      <div style={{ aspectRatio: '9/16', background: 'var(--surface-2)', position: 'relative', overflow: 'hidden' }}>
-        {clip.thumbnail_url ? (
-          <img src={clip.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.5">
-              <polygon points="5 3 19 12 5 21 5 3"/>
+    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <a
+        href={clip.video_url}
+        target={playableInline ? undefined : '_blank'}
+        rel="noreferrer"
+        onClick={handleClick}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.6rem',
+          padding: '0.65rem 0.75rem',
+          textDecoration: 'none',
+          color: 'inherit',
+        }}
+      >
+        <img
+          src={avatarUrl ?? `https://api.dicebear.com/9.x/initials/svg?seed=${username ?? 'climber'}`}
+          alt={username ?? 'You'}
+          className="avatar avatar--sm"
+          style={{ flexShrink: 0 }}
+        />
+
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            background: 'var(--surface-2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          {expanded ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--text-faint)">
+              <rect x="6" y="5" width="4" height="14" />
+              <rect x="14" y="5" width="4" height="14" />
             </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--text-faint)">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+          )}
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <GradePill grade={route?.grade} color={route?.tag_color} />
+            {route?.wall && (
+              <span className="text-xs text-muted truncate">{route.wall}</span>
+            )}
+            <span className="text-muted text-xs" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+              {timeAgo(clip.created_at)}
+            </span>
           </div>
-        )}
-        <div style={{ position: 'absolute', bottom: '0.5rem', left: '0.5rem' }}>
-          <GradePill grade={route?.grade} color={route?.color} />
+          {clip.caption && (
+            <p className="text-xs text-muted truncate" style={{ marginTop: '0.2rem' }}>{clip.caption}</p>
+          )}
         </div>
-      </div>
-      <div style={{ padding: '0.6rem 0.7rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <img
-            src={user?.avatar_url ?? `https://api.dicebear.com/9.x/initials/svg?seed=${user?.username}`}
-            alt={user?.username}
-            className="avatar avatar--sm"
-          />
-          <span className="text-xs font-display truncate" style={{ fontWeight: 600 }}>{user?.username}</span>
-        </div>
-        {clip.caption && (
-          <p className="text-xs text-muted truncate" style={{ marginTop: '0.25rem' }}>{clip.caption}</p>
+
+        {!playableInline && (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="2" style={{ flexShrink: 0 }}>
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
         )}
-      </div>
+      </a>
+      {expanded && playableInline && (
+        <video
+          src={clip.video_url}
+          controls
+          autoPlay
+          playsInline
+          style={{ width: '100%', display: 'block', background: '#000', maxHeight: 360 }}
+        />
+      )}
     </div>
   );
 }
@@ -304,26 +371,17 @@ export default function Home() {
   const navigate = useNavigate();
 
   const [tab,        setTab]        = useState('sends');
-  const [sends,      setSends]      = useState(null);
-  const [sendsError, setSendsError] = useState(null);
-  const [routes,     setRoutes]     = useState(null);
   const [clips,      setClips]      = useState(null);
   const [top3,       setTop3]       = useState(null);
+  const [profile,    setProfile]    = useState(null);
 
-  const loadHomeSends = () => {
-    getRecentSends(20).then(({ data, error }) => {
-      if (error) {
-        setSendsError(error.message || 'Unable to load recent sends.');
-        setSends([]);
-      } else {
-        setSendsError(null);
-        setSends(data ?? []);
-      }
-    });
-  };
+  const loadHomeClips = (userId) => {
+    if (!userId) {
+      setClips([]);
+      return;
+    }
 
-  const loadHomeClips = () => {
-    getRecentClips(12).then(({ data, error }) => {
+    getUserClips(userId).then(({ data, error }) => {
       if (error) {
         setClips([]);
         return;
@@ -335,28 +393,30 @@ export default function Home() {
   const loadTop3 = async () => {
     const { data: sends } = await supabase
       .from('sends')
-      .select(`*, profiles!sends_user_id_fkey (id, username, avatar_url), routes (id, grade, tag_color, hold_color)`)
+      .select(`*, profiles!sends_user_id_fkey (id, username, avatar_url), routes (id, grade, tag_color)`)
       .order('created_at', { ascending: false });
     setTop3(aggregateSends(sends ?? []));
   };
 
   useEffect(() => {
-    loadHomeSends();
-    getActiveRoutes().then(({ data, error }) => {
-      setRoutes(error ? [] : data ?? []);
-    });
-    loadHomeClips();
+    loadHomeClips(session?.user?.id);
     loadTop3();
 
-    const handleClipAdded = () => loadHomeClips();
-    const handleSendAdded = () => { loadHomeSends(); loadTop3(); };
+    if (session?.user?.id) {
+      getProfile(session.user.id).then(({ data }) => setProfile(data)).catch(() => setProfile(null));
+    } else {
+      setProfile(null);
+    }
+
+    const handleClipAdded = () => loadHomeClips(session?.user?.id);
+    const handleSendAdded = () => { loadTop3(); };
     window.addEventListener('clip-added', handleClipAdded);
     window.addEventListener('send-added', handleSendAdded);
     return () => {
       window.removeEventListener('clip-added', handleClipAdded);
       window.removeEventListener('send-added', handleSendAdded);
     };
-  }, []);
+  }, [session?.user?.id]);
 
   return (
     <>
@@ -366,7 +426,6 @@ export default function Home() {
         <div className="tabs">
           {[
             { id: 'sends',  label: 'Sends' },
-            { id: 'routes', label: 'On the wall' },
             { id: 'clips',  label: 'Leaderboard' },
           ].map(t => (
             <button
@@ -382,38 +441,24 @@ export default function Home() {
         {/* ── Sends tab ── */}
         {tab === 'sends' && (
           <section>
-            <SectionHead title="Recent sends" meta={sends ? `${sends.length} logged` : ''} />
-            {sendsError && (
-              <p className="text-danger text-sm" style={{ marginBottom: '0.75rem' }}>{sendsError}</p>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-              {sends === null
-                ? <Skeletons count={5} height={88} />
-                : sends.length === 0
-                  ? <p className="text-muted text-sm">No sends yet</p>
-                  : sends.map(s => <SendCard key={s.id} send={s} />)
-              }
-            </div>
-          </section>
-        )}
-
-        {/* ── Routes tab ── */}
-        {tab === 'routes' && (
-          <section>
-            <SectionHead title="Active routes" meta={routes ? `${routes.length} routes` : ''} />
+            <SectionHead title="Your uploads" meta={clips ? `${clips.length} uploaded` : ''} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {routes === null
-                ? <Skeletons count={6} height={64} />
-                : routes.length === 0
-                  ? <p className="text-muted text-sm">No active routes.</p>
-                  : routes.map(r => (
-                  <RouteRow
-                    key={r.id}
-                    route={r}
-                    onClick={() => navigate('/routes', { state: { routeId: r.id } })}
+              {clips === null ? (
+                <Skeletons count={5} height={68} />
+              ) : (!session ? (
+                <p className="text-muted text-sm">Sign in to see your uploaded clips.</p>
+              ) : clips.length === 0 ? (
+                <p className="text-muted text-sm">You haven't uploaded any videos yet.</p>
+              ) : (
+                clips.map(clip => (
+                  <ClipRow
+                    key={clip.id}
+                    clip={clip}
+                    avatarUrl={profile?.avatar_url}
+                    username={profile?.username}
                   />
                 ))
-              }
+              ))}
             </div>
           </section>
         )}

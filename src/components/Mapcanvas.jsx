@@ -1,14 +1,9 @@
 // MapCanvas.jsx
 // Renders Map.png as a pan + pinch-zoomable surface.
 // Overlays:
-//   • One cluster badge per wall section — tap to open SectionPanel
-//   • Individual grade-colored pins per route (visible when zoomed in enough)
+//   • One section label per wall section — tap to open the log form
 //
-// Route rows in your DB need two extra columns:
-//   pin_x  FLOAT  — horizontal position as 0–100 (percentage of map width)
-//   pin_y  FLOAT  — vertical position as 0–100 (percentage of map height)
-//
-// Use PinPlacementHelper (dev-only) to get these values by tapping the map.
+// Use PinPlacementHelper (dev-only) only for debug mapping, not route submission.
 
 import { useRef, useState, useCallback, useEffect } from 'react';
 import MapImage from '../assets/Map.png';
@@ -16,7 +11,7 @@ import MapImage from '../assets/Map.png';
 const MAP_WIDTH = 2400;
 const MAP_HEIGHT = 1800;
 
-const SECTION_LABELS = [
+export const SECTION_LABELS = [
   { key: 'frontslab', label: 'Front slab', x: 93, y: 50 },
   { key: 'wave',      label: 'Wave wall', x: 70, y: 90 },
   { key: 'accordion', label: 'Accordion wall', x: 30, y: 90 },
@@ -26,27 +21,10 @@ const SECTION_LABELS = [
   { key: 'backslab',  label: 'Back slab', x: 50, y: 10 },
 ];
 
-const UNIQUE_LABELS = [...new Map(SECTION_LABELS.map(item => [item.key, item])).values()];
-
-const HOLD_COLORS = {
-  yellow: '#FFD600', green: '#4CAF50', blue: '#2196F3', red: '#E53935',
-  black: '#424242', white: '#F5F5F5', pink: '#FF2D8F',
-  orange: '#FF6D00', purple: '#9C27B0',
-};
-
-function hexToRgba(hex, alpha = 1) {
-  const cleaned = hex.replace('#', '');
-  const bigint = parseInt(cleaned.length === 3 ? cleaned.split('').map(c => c + c).join('') : cleaned, 16);
-  const r = (bigint >> 16) & 255;
-  const g = (bigint >> 8) & 255;
-  const b = bigint & 255;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
+export const UNIQUE_LABELS = [...new Map(SECTION_LABELS.map(item => [item.key, item])).values()];
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
-const CLUSTER_ZOOM_THRESHOLD = 2.2; // below this, show clusters; above, show individual pins
-const LABEL_ZOOM_THRESHOLD = 2.2; // labels disappear when zoomed in beyond this
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -62,89 +40,10 @@ function getDistance(t1, t2) {
 
 // ─── Pin components ───────────────────────────────────────────────────────────
 
-function RoutePin({ route, zoom, onClick }) {
-  const [pressed, setPressed] = useState(false);
-  if (route.pin_x == null || route.pin_y == null) return null;
-  const color = HOLD_COLORS[route.color?.toLowerCase()] ?? '#555';
-  const outline = hexToRgba(color, 0.25);
-  const size = clamp(32 / zoom, 35, 40);
-  const x = (route.pin_x / 100) * MAP_WIDTH;
-  const y = (route.pin_y / 100) * MAP_HEIGHT;
-
-  return (
-    <g
-      transform={`translate(${x} ${y})`}
-      onPointerDown={(e) => { e.stopPropagation(); setPressed(true); }}
-      onPointerUp={(e) => { e.stopPropagation(); setPressed(false); }}
-      onPointerCancel={(e) => { e.stopPropagation(); setPressed(false); }}
-      onClick={(e) => { e.stopPropagation(); onClick(route); }}
-      style={{ cursor: 'pointer' }}
-      aria-label={`${route.name} ${route.grade}`}
-    >
-      <rect
-        x={-size / 2}
-        y={-size / 2}
-        width={size}
-        height={size}
-        rx={size * 0.28}
-        fill={color}
-        stroke={outline}
-        strokeWidth={Math.max(1, size * 0.08)}
-        transform={pressed ? `rotate(-45) scale(1.25)` : 'rotate(-45)'}
-      />
-      <title>{`${route.grade} – ${route.name}`}</title>
-    </g>
-  );
-}
-
-function ClusterBadge({ cluster, onClick }) {
-  const colorCounts = {};
-  cluster.routes.forEach(r => {
-    const c = r.color?.toLowerCase() ?? 'unknown';
-    colorCounts[c] = (colorCounts[c] ?? 0) + 1;
-  });
-  const dominantColor = Object.entries(colorCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-  const accent = HOLD_COLORS[dominantColor] ?? '#E8FF47';
-  const x = (cluster.cx / 100) * MAP_WIDTH;
-  const y = (cluster.cy / 100) * MAP_HEIGHT;
-
-  return (
-    <g
-      transform={`translate(${x} ${y})`}
-      onClick={(e) => { e.stopPropagation(); onClick(cluster.section); }}
-      style={{ cursor: 'pointer' }}
-      aria-label={`${cluster.section} — ${cluster.routes.length} routes`}
-    >
-      <circle cx={0} cy={0} r={42} fill='rgba(13,13,13,0.85)' stroke={accent} strokeWidth={5} />
-      <text
-        x={0}
-        y={4}
-        textAnchor='middle'
-        fontFamily='var(--font-display)'
-        fontSize='70'
-        fontWeight='700'
-        fill={accent}
-      >
-        {cluster.routes.length}
-      </text>
-      <text
-        x={0}
-        y={75}
-        textAnchor='middle'
-        fontFamily='var(--font-display)'
-        fontSize='42'
-        fontWeight='600'
-        fill='#fff'
-      >
-        {cluster.section}
-      </text>
-    </g>
-  );
-}
 
 // ─── MapCanvas ────────────────────────────────────────────────────────────────
 
-export default function MapCanvas({ routes = [], onSectionSelect, onRouteSelect }) {
+export default function MapCanvas({ onSectionSelect }) {
   const containerRef = useRef(null);
   const [zoom,   setZoom]   = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -241,8 +140,6 @@ export default function MapCanvas({ routes = [], onSectionSelect, onRouteSelect 
     setOffset({ x: 0, y: 0 });
   };
 
-  const showClusters = zoom < CLUSTER_ZOOM_THRESHOLD;
-
   return (
     <div
       style={{
@@ -287,7 +184,7 @@ export default function MapCanvas({ routes = [], onSectionSelect, onRouteSelect 
             preserveAspectRatio="xMidYMid meet"
           />
 
-          {zoom <= LABEL_ZOOM_THRESHOLD && UNIQUE_LABELS.map(s => (
+          {UNIQUE_LABELS.map(s => (
             <g
               key={s.key}
               transform={`translate(${(s.x / 100) * MAP_WIDTH} ${(s.y / 100) * MAP_HEIGHT})`}
@@ -317,15 +214,6 @@ export default function MapCanvas({ routes = [], onSectionSelect, onRouteSelect 
                 {s.label}
               </text>
             </g>
-          ))}
-
-          {!showClusters && routes.map(route => (
-            <RoutePin
-              key={route.id}
-              route={route}
-              zoom={zoom}
-              onClick={onRouteSelect}
-            />
           ))}
         </svg>
 
@@ -371,7 +259,7 @@ export default function MapCanvas({ routes = [], onSectionSelect, onRouteSelect 
         </div>
 
       {/* Zoom hint */}
-      {zoom < 1.2 && routes.some(r => r.pin_x != null) && (
+      {zoom < 1.2 && (
         <div
           style={{
             position: 'absolute',
@@ -390,7 +278,7 @@ export default function MapCanvas({ routes = [], onSectionSelect, onRouteSelect 
             pointerEvents: 'none',
           }}
         >
-          Pinch to zoom · Tap a section to see routes
+          Pinch to zoom · Tap a label to log a route
         </div>
       )}
     </div>

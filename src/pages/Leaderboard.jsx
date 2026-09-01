@@ -85,8 +85,8 @@ function aggregateSends(sends) {
       };
     }
 
-    // routes table uses tag_color / hold_color per supabase.js
-    const color = route.tag_color || route.hold_color || route.color || null;
+    // routes table uses color per supabase.js
+    const color = route.color || null;
     const grade = route.grade || "";
     const score = calcSendScore(grade, send.attempts);
 
@@ -742,7 +742,7 @@ export default function Leaderboard() {
           .select(`
             *,
             profiles!sends_user_id_fkey (id, username, avatar_url),
-            routes (id, wall, grade, tag_color, hold_color)
+            routes (id, wall, grade, tag_color)
           `)
           .order("created_at", { ascending: false });
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import MapCanvas from '../components/Mapcanvas';
+import MapCanvas, { UNIQUE_LABELS } from '../components/Mapcanvas';
 import SectionPanel from '../components/Sectionpanel';
 import RouteCard from '../components/RouteCard';
 import { getActiveRoutes } from '../services/supabase';
@@ -31,14 +31,18 @@ export default function GymMap() {
   const handleSectionSelect = (sec) => setSection(sec);
   const handleRouteSelect = (route) => setSelectedRoute(route);
 
+  const sectionLabel = UNIQUE_LABELS.find(s => s.key === section)?.label;
+
   return (
     <div className="container page-content" style={{ paddingTop: '1.25rem', width: '100%', maxWidth: '100%' }}>
       <div style={{ width: '100%', minHeight: '55vh', height: '62vh' }}>
         <MapCanvas
-          routes={routes}
           onSectionSelect={handleSectionSelect}
-          onRouteSelect={handleRouteSelect}
         />
+      </div>
+
+      <div style={{ marginTop: '0.8rem', fontSize: '0.92rem', color: 'var(--text-muted)' }}>
+        Tap a section label on the map to log the climb you just did.
       </div>
 
       <div style={{ marginTop: '1rem' }}>
@@ -54,25 +58,18 @@ export default function GymMap() {
             </button>
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: '0.9rem' }}>
-            <h2 style={{ fontFamily: 'var(--font-display)', marginBottom: '0.75rem' }}>Routes on the wall</h2>
-            {routes.length === 0 ? (
-              <div className="card" style={{ padding: '1rem' }}>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>No active routes available yet.</p>
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gap: '0.75rem' }}>
-                {routes.map(route => (
-                  <RouteCard key={route.id} route={route} onSelect={handleRouteSelect} />
-                ))}
-              </div>
-            )}
+          <div className="card" style={{ padding: '1rem', display: 'grid', gap: '0.75rem' }}>
+            <h2 style={{ fontFamily: 'var(--font-display)', marginBottom: '0.75rem' }}>Tap a section label</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', margin: 0 }}>
+              Select a wall section from the map labels to log grade, attempts, and a clip.
+            </p>
           </div>
         )}
       </div>
 
       <SectionPanel
         section={section}
+        sectionLabel={sectionLabel}
         routes={routes}
         userSends={{}}
         onClose={() => setSection(null)}
