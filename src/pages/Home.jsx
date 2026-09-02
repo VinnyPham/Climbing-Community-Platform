@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
-import { getUserClips, getProfile } from '../services/supabase';
+import { getRecentClips } from '../services/supabase';
 import { supabase } from '../services/supabase';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -165,9 +165,10 @@ function isDirectVideoUrl(url) {
   return /\.(mp4|mov|webm|m4v|ogg)(\?.*)?$/i.test(url) || url.includes('/storage/v1/object/');
 }
 
-function ClipRow({ clip, avatarUrl, username }) {
+function ClipRow({ clip }) {
   const [expanded, setExpanded] = useState(false);
   const route = clip.routes || clip.route;
+  const uploader = clip.profiles;
   const playableInline = isDirectVideoUrl(clip.video_url);
 
   const handleClick = (e) => {
@@ -195,8 +196,8 @@ function ClipRow({ clip, avatarUrl, username }) {
         }}
       >
         <img
-          src={avatarUrl ?? `https://api.dicebear.com/9.x/initials/svg?seed=${username ?? 'climber'}`}
-          alt={username ?? 'You'}
+          src={uploader?.avatar_url ?? `https://api.dicebear.com/9.x/initials/svg?seed=${uploader?.username ?? 'climber'}`}
+          alt={uploader?.username ?? 'Climber'}
           className="avatar avatar--sm"
           style={{ flexShrink: 0 }}
         />
@@ -227,6 +228,9 @@ function ClipRow({ clip, avatarUrl, username }) {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span className="text-xs font-display truncate" style={{ fontWeight: 600 }}>
+              {uploader?.username ?? 'Climber'}
+            </span>
             <GradePill grade={route?.grade} color={route?.tag_color} />
             {route?.wall && (
               <span className="text-xs text-muted truncate">{route.wall}</span>
@@ -373,15 +377,9 @@ export default function Home() {
   const [tab,        setTab]        = useState('sends');
   const [clips,      setClips]      = useState(null);
   const [top3,       setTop3]       = useState(null);
-  const [profile,    setProfile]    = useState(null);
 
-  const loadHomeClips = (userId) => {
-    if (!userId) {
-      setClips([]);
-      return;
-    }
-
-    getUserClips(userId).then(({ data, error }) => {
+  const loadClips = () => {
+    getRecentClips(30).then(({ data, error }) => {
       if (error) {
         setClips([]);
         return;
@@ -399,16 +397,10 @@ export default function Home() {
   };
 
   useEffect(() => {
-    loadHomeClips(session?.user?.id);
+    loadClips();
     loadTop3();
 
-    if (session?.user?.id) {
-      getProfile(session.user.id).then(({ data }) => setProfile(data)).catch(() => setProfile(null));
-    } else {
-      setProfile(null);
-    }
-
-    const handleClipAdded = () => loadHomeClips(session?.user?.id);
+    const handleClipAdded = () => loadClips();
     const handleSendAdded = () => { loadTop3(); };
     window.addEventListener('clip-added', handleClipAdded);
     window.addEventListener('send-added', handleSendAdded);
@@ -416,7 +408,7 @@ export default function Home() {
       window.removeEventListener('clip-added', handleClipAdded);
       window.removeEventListener('send-added', handleSendAdded);
     };
-  }, [session?.user?.id]);
+  }, []);
 
   return (
     <>
@@ -441,24 +433,15 @@ export default function Home() {
         {/* ── Sends tab ── */}
         {tab === 'sends' && (
           <section>
-            <SectionHead title="Your uploads" meta={clips ? `${clips.length} uploaded` : ''} />
+            <SectionHead title="Recent climbs" meta={clips ? `${clips.length} logged` : ''} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {clips === null ? (
                 <Skeletons count={5} height={68} />
-              ) : (!session ? (
-                <p className="text-muted text-sm">Sign in to see your uploaded clips.</p>
               ) : clips.length === 0 ? (
-                <p className="text-muted text-sm">You haven't uploaded any videos yet.</p>
+                <p className="text-muted text-sm">No climbs logged yet.</p>
               ) : (
-                clips.map(clip => (
-                  <ClipRow
-                    key={clip.id}
-                    clip={clip}
-                    avatarUrl={profile?.avatar_url}
-                    username={profile?.username}
-                  />
-                ))
-              ))}
+                clips.map(clip => <ClipRow key={clip.id} clip={clip} />)
+              )}
             </div>
           </section>
         )}

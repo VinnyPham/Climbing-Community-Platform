@@ -187,7 +187,7 @@ export const deleteClip = (clipId) =>
 export const getRecentClips = (limit = 20) =>
   supabase
     .from('clips')
-    .select('*')
+    .select(`*, profiles (id, username, avatar_url), routes (id, grade, tag_color, wall)`)
     .order('created_at', { ascending: false })
     .limit(limit);
 
