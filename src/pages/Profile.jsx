@@ -91,6 +91,21 @@ function dedupeSendsByRoute(sends = []) {
   });
 }
 
+// Clip video_urls are public Supabase Storage URLs, e.g.
+// https://<project>.supabase.co/storage/v1/object/public/clips/<uid>/<file>
+// Storage.remove() needs just the "<uid>/<file>" part, not the full URL.
+function extractClipStoragePath(url) {
+  if (!url) return null;
+  const marker = "/object/public/clips/";
+  const idx = url.indexOf(marker);
+  if (idx === -1) return null;
+  try {
+    return decodeURIComponent(url.slice(idx + marker.length));
+  } catch {
+    return url.slice(idx + marker.length);
+  }
+}
+
 // ── Tiny stat card ─────────────────────────────────────────────────────────
 function StatCard({ label, value, accent }) {
   return (
@@ -173,7 +188,7 @@ function LogRow({
             {isEditing
               ? "Editing send…"
               : isDeleting
-                ? "Delete this send?"
+                ? "Delete this send? Any linked clip will be removed too."
                 : `${entry.attempts} ${entry.attempts === 1 ? "try" : "tries"} · ${date}`}
           </div>
         </div>
@@ -446,12 +461,69 @@ export default function Profile() {
     setDeletingSendId(null);
   };
 
+  // Deletes any clip(s) logged for the same (user, route) as this send.
+  // Clips aren't linked to a specific send id — they're keyed by
+  // (user_id, route_id), same pairing sends are deduped by — so this is the
+  // correct scope for "the video that goes with this send". Removes the
+  // storage file first, then the clips row. Throws on the first failure so
+  // the caller can decide whether to still proceed with deleting the send.
+  const deleteClipsForRoute = async (uid, routeId) => {
+    if (!routeId) return;
+
+    const { data: relatedClips, error: lookupError } = await supabase
+      .from("clips")
+      .select("id, video_url")
+      .eq("user_id", uid)
+      .eq("route_id", routeId);
+
+    if (lookupError) throw lookupError;
+    if (!relatedClips?.length) return;
+
+    for (const clip of relatedClips) {
+      const storagePath = extractClipStoragePath(clip.video_url);
+      if (storagePath) {
+        const { error: removeError } = await supabase.storage.from("clips").remove([storagePath]);
+        if (removeError) {
+          throw new Error(
+            `Couldn't remove the clip file — this is likely a Storage policy on the 'clips' bucket blocking deletes for this user. (${removeError.message})`
+          );
+        }
+      }
+
+      const { error: clipDeleteError, count } = await supabase
+        .from("clips")
+        .delete({ count: "exact" })
+        .eq("id", clip.id)
+        .eq("user_id", uid);
+
+      if (clipDeleteError) throw clipDeleteError;
+      if (!count) {
+        throw new Error(
+          "Clip file was removed, but the clip record itself didn't delete — this is almost always a Row Level Security policy on 'clips' blocking deletes. Make sure there's a DELETE policy like: using (auth.uid() = user_id)."
+        );
+      }
+    }
+  };
+
   const confirmDeleteSend = async (entryId) => {
     setSendDeleting(true);
     setSendError(null);
     try {
       const uid = session?.user?.id;
       if (!uid) throw new Error("You need to be signed in to delete a send.");
+
+      const entry = logs.find((item) => item.id === entryId);
+      const routeId = entry?.route_id ?? entry?.routes?.id ?? null;
+
+      // Clean up the linked clip first. If this fails we still go ahead and
+      // delete the send below (better than leaving the user stuck), but we
+      // surface the clip error afterward instead of silently swallowing it.
+      let clipWarning = null;
+      try {
+        await deleteClipsForRoute(uid, routeId);
+      } catch (clipErr) {
+        clipWarning = clipErr.message ?? "Couldn't remove the linked clip.";
+      }
 
       const { error, count } = await supabase
         .from("sends")
@@ -469,6 +541,16 @@ export default function Profile() {
       setLogs((prev) => prev.filter((item) => item.id !== entryId));
       setDeletingSendId(null);
       if (editingSendId === entryId) setEditingSendId(null);
+
+      // Home.jsx listens for these to refetch its clip list and leaderboard —
+      // it has no other way to know a send (and its clip) just disappeared,
+      // especially if it's still mounted in the background.
+      window.dispatchEvent(new Event('clip-added'));
+      window.dispatchEvent(new Event('send-added'));
+
+      if (clipWarning) {
+        setSendError(`Send deleted, but: ${clipWarning}`);
+      }
     } catch (err) {
       setSendError(err.message ?? "Unable to delete send.");
     } finally {

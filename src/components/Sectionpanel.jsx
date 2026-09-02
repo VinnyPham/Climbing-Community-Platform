@@ -1,9 +1,15 @@
 // SectionPanel.jsx
 // A bottom sheet that slides up when a wall section label is tapped.
-// Opens straight into a "log your climb" form. Each wall section has at
-// most one route per color — picking a color logs against that route if
-// it already exists, or creates it on the fly if this is the first climb
-// on that color in this section.
+//
+// Route picking is two steps: color first (filters), then the specific
+// route if this wall already has more than one of that color — labeled by
+// date added, since routes have no name/number field. "+ New" always logs
+// a fresh one.
+//
+// Large uploads get compressed client-side (ffmpeg.wasm) before hitting
+// Supabase Storage. ffmpeg is loaded lazily — only once someone actually
+// picks a file over the compression threshold — so it never touches the
+// initial bundle size.
 //
 // Props:
 //   section       — section key, or null (panel is hidden)
@@ -29,7 +35,79 @@ const SWATCH_HEX = {
   black:  '#161616',
 };
 
-const MAX_CLIP_MB = 100;
+// Matches the 8 range buckets already defined in Profile.jsx's GRADE_COLORS/
+// GRADE_ORDER — this is what actually goes in the `grade` column now, not
+// the color name itself, so grade breakdowns and scoring work correctly.
+const GRADE_RANGE_BY_COLOR = {
+  white:  'VB-V0',
+  yellow: 'V0-V1',
+  green:  'V1-V2',
+  red:    'V2-V4',
+  blue:   'V4-V6',
+  orange: 'V5-V7',
+  purple: 'V7-V9',
+  black:  'V9-V11',
+};
+
+// Hard ceiling before we even attempt anything (compression on a browser
+// tab can run out of memory on very large files, especially on mobile).
+const MAX_UPLOAD_MB = 300;
+// Anything bigger than this gets compressed first; smaller files upload
+// as-is since compressing them isn't worth the wait.
+const COMPRESS_THRESHOLD_MB = 15;
+
+// ── ffmpeg.wasm, loaded lazily on first use ─────────────────────────────────
+let ffmpegPromise = null;
+async function getFFmpeg() {
+  if (!ffmpegPromise) {
+    ffmpegPromise = (async () => {
+      const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+      const { toBlobURL } = await import('@ffmpeg/util');
+      const ffmpeg = new FFmpeg();
+      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+      return ffmpeg;
+    })();
+  }
+  return ffmpegPromise;
+}
+
+async function compressVideo(file, onProgress) {
+  const { fetchFile } = await import('@ffmpeg/util');
+  const ffmpeg = await getFFmpeg();
+
+  const handleProgress = ({ progress }) => onProgress?.(Math.min(99, Math.round((progress || 0) * 100)));
+  ffmpeg.on('progress', handleProgress);
+
+  const inputName = `input${(file.name.match(/\.\w+$/)?.[0] || '.mp4')}`;
+  const outputName = 'output.mp4';
+
+  try {
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+    await ffmpeg.exec([
+      '-i', inputName,
+      '-vcodec', 'libx264',
+      '-crf', '30',
+      '-preset', 'veryfast',
+      '-vf', "scale='min(1280,iw)':-2",
+      '-acodec', 'aac',
+      '-b:a', '96k',
+      outputName,
+    ]);
+    const data = await ffmpeg.readFile(outputName);
+    onProgress?.(100);
+    return new File([data.buffer], outputName, { type: 'video/mp4' });
+  } finally {
+    ffmpeg.off('progress', handleProgress);
+    // Best-effort cleanup so repeat compressions in the same session don't
+    // pile up files in ffmpeg's virtual filesystem.
+    try { await ffmpeg.deleteFile(inputName); } catch { /* ignore */ }
+    try { await ffmpeg.deleteFile(outputName); } catch { /* ignore */ }
+  }
+}
 
 export default function SectionPanel({ section, sectionLabel, routes, userSends = {}, onClose, onRouteSelect }) {
   const sheetRef = useRef(null);
@@ -41,6 +119,8 @@ export default function SectionPanel({ section, sectionLabel, routes, userSends 
   const [clipUrl, setClipUrl] = useState('');
   const [clipFile, setClipFile] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [compressing, setCompressing] = useState(false);
+  const [compressPct, setCompressPct] = useState(0);
   const [uploadingClip, setUploadingClip] = useState(false);
   const [formError, setFormError] = useState(null);
   const [formSuccess, setFormSuccess] = useState(false);
@@ -49,11 +129,10 @@ export default function SectionPanel({ section, sectionLabel, routes, userSends 
     r => r.wall_section?.toLowerCase() === section?.toLowerCase()
   );
 
-  // One route per color per section — look up by color, not by id.
-  const routeByColor = (tag) =>
-    sectionRoutes.find(r => (r.color || r.grade || '').toLowerCase() === tag.toLowerCase()) || null;
-
-  const selectedRoute = routeByColor(colorTag);
+  // Informational only now — just tells you this wall already has a route
+  // of that color, doesn't drive any selection.
+  const colorAlreadyExists = (tag) =>
+    sectionRoutes.some(r => (r.color || r.grade || '').toLowerCase() === tag.toLowerCase());
 
   // Reset the form each time the panel opens on a (possibly new) section.
   useEffect(() => {
@@ -89,6 +168,8 @@ export default function SectionPanel({ section, sectionLabel, routes, userSends 
     setVideoMode('link');
     setClipUrl('');
     setClipFile(null);
+    setCompressing(false);
+    setCompressPct(0);
     setUploadingClip(false);
     setFormError(null);
     setFormSuccess(false);
@@ -97,8 +178,8 @@ export default function SectionPanel({ section, sectionLabel, routes, userSends 
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0] || null;
-    if (file && file.size > MAX_CLIP_MB * 1024 * 1024) {
-      setFormError(`That clip is over ${MAX_CLIP_MB}MB — try a shorter one or paste a link instead.`);
+    if (file && file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      setFormError(`That clip is over ${MAX_UPLOAD_MB}MB — even compression won't reliably bring that down in-browser. Try a shorter clip or paste a link instead.`);
       e.target.value = '';
       return;
     }
@@ -116,24 +197,18 @@ export default function SectionPanel({ section, sectionLabel, routes, userSends 
       const userId = sessionData?.session?.user?.id;
       if (!userId) throw new Error('Please sign in to log a climb.');
 
-      let routeId = selectedRoute?.id;
-      let routeForCallback = selectedRoute;
-
-      if (!routeId) {
-        // First climb on this color in this section — create it now.
-        const { data: newRoute, error: routeError } = await createRoute({
-          grade: colorTag,
-          tag_color: colorTag,
-          wall: section,
-          active: true,
-        });
-        if (routeError) throw routeError;
-        if (!newRoute?.id) throw new Error('Route creation failed.');
-        routeId = newRoute.id;
-        // createRoute already runs the result through normalizeRoute, so
-        // newRoute.color / .wall_section / .name are ready to use as-is.
-        routeForCallback = newRoute;
-      }
+      const { data: newRoute, error: routeError } = await createRoute({
+        grade: GRADE_RANGE_BY_COLOR[colorTag],
+        tag_color: colorTag,
+        wall: section,
+        active: true,
+      });
+      if (routeError) throw routeError;
+      if (!newRoute?.id) throw new Error('Route creation failed.');
+      // createRoute already runs the result through normalizeRoute, so
+      // newRoute.color / .wall_section are ready to use as-is.
+      const routeId = newRoute.id;
+      const routeForCallback = newRoute;
 
       const { error: sendError } = await logSend({ userId, routeId, attempts });
       if (sendError) throw sendError;
@@ -142,8 +217,26 @@ export default function SectionPanel({ section, sectionLabel, routes, userSends 
       if (videoMode === 'link' && clipUrl.trim()) {
         finalClipUrl = clipUrl.trim();
       } else if (videoMode === 'upload' && clipFile) {
+        let fileToUpload = clipFile;
+
+        if (clipFile.size > COMPRESS_THRESHOLD_MB * 1024 * 1024) {
+          setCompressing(true);
+          setCompressPct(0);
+          try {
+            fileToUpload = await compressVideo(clipFile, setCompressPct);
+          } catch (compressErr) {
+            // If compression fails for any reason (unsupported codec, out of
+            // memory, etc.) fall back to uploading the original rather than
+            // blocking the whole log.
+            console.error('Video compression failed, uploading original file instead:', compressErr);
+            fileToUpload = clipFile;
+          } finally {
+            setCompressing(false);
+          }
+        }
+
         setUploadingClip(true);
-        finalClipUrl = await uploadClipVideo(userId, clipFile);
+        finalClipUrl = await uploadClipVideo(userId, fileToUpload);
       }
 
       if (finalClipUrl) {
@@ -159,12 +252,13 @@ export default function SectionPanel({ section, sectionLabel, routes, userSends 
       setFormError(err?.message || 'Unable to log that climb.');
     } finally {
       setSaving(false);
+      setCompressing(false);
       setUploadingClip(false);
     }
   };
 
   const submitLabel = saving
-    ? (uploadingClip ? 'Uploading clip…' : 'Saving…')
+    ? (compressing ? `Compressing… ${compressPct}%` : uploadingClip ? 'Uploading clip…' : 'Saving…')
     : 'Log climb';
 
   return (
@@ -249,13 +343,13 @@ export default function SectionPanel({ section, sectionLabel, routes, userSends 
 
         <div style={{ overflowY: 'auto', padding: '0.9rem 1rem 1.2rem', display: 'grid', gap: '0.9rem' }}>
 
-          {/* Color picker — one route per color in this section */}
+          {/* Color */}
           <div style={{ display: 'grid', gap: '0.5rem' }}>
             <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>Color</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
               {COLOR_TAGS.map(tag => {
                 const active = colorTag === tag;
-                const exists = !!routeByColor(tag);
+                const exists = colorAlreadyExists(tag);
                 return (
                   <button
                     key={tag}
@@ -290,11 +384,9 @@ export default function SectionPanel({ section, sectionLabel, routes, userSends 
                 );
               })}
             </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              {colorTag.charAt(0).toUpperCase() + colorTag.slice(1)}
-              {selectedRoute
-                ? (userSends[selectedRoute.id] ? ' \u00b7 you\u2019ve logged this one before' : ' \u00b7 already on the map')
-                : ' \u00b7 first climb on this color here'}
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              {colorTag.charAt(0).toUpperCase() + colorTag.slice(1)} ({GRADE_RANGE_BY_COLOR[colorTag]})
+              {colorAlreadyExists(colorTag) ? ' \u2014 this wall already has one; logging will add another' : ' \u2014 first one on this wall'}
             </div>
           </div>
 
@@ -388,7 +480,7 @@ export default function SectionPanel({ section, sectionLabel, routes, userSends 
                   )}
                 </label>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.3rem' }}>
-                  Up to {MAX_CLIP_MB}MB
+                  Up to {MAX_UPLOAD_MB}MB — anything over {COMPRESS_THRESHOLD_MB}MB is compressed automatically before upload.
                 </div>
               </div>
             )}
