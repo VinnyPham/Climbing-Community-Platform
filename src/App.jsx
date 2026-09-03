@@ -6,6 +6,7 @@ import Home from './pages/Home';
 import GymMap from './pages/GymMap';
 import Profile from './pages/Profile';
 import Leaderboard from './pages/Leaderboard';
+import Search from './pages/Search';
 
 
 // ─── Auth context ─────────────────────────────────────────────────────────────
@@ -82,6 +83,11 @@ const IconProfile = () => (
     <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
   </svg>
 );
+const IconSearch = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>
+  </svg>
+);
 
 // ─── Mobile header ────────────────────────────────────────────────────────────
 function MobileHeader() {
@@ -113,6 +119,7 @@ function BottomNav() {
 
   const tabs = [
     { to: '/',             label: 'Home',        Icon: IconHome },
+    { to: '/search',       label: 'Search',      Icon: IconSearch },
     { to: '/routes',       label: 'Routes',      Icon: IconRoutes },
     { to: '/leaderboard',  label: 'Leaderboard', Icon: IconLeaderboard },
     { to: session ? `/profile/${profile?.id}` : '/profile', label: 'Me', Icon: IconProfile },
@@ -143,8 +150,8 @@ function TopNav() {
       <div className="container top-nav__inner">
         <NavLink to="/" className="top-nav__logo">⬡ Hangar18</NavLink>
         <div className="top-nav__links">
-          {['/', '/routes', '/leaderboard'].map((path, i) => {
-            const labels = ['Home', 'Routes', 'Leaderboard'];
+          {['/', '/search', '/routes', '/leaderboard'].map((path, i) => {
+            const labels = ['Home', 'Search', 'Routes', 'Leaderboard'];
             return (
               <NavLink key={path} to={path} end={path === '/'} className={({ isActive }) => `top-nav__link${isActive ? ' active' : ''}`}>
                 {labels[i]}
@@ -205,6 +212,11 @@ export default function App() {
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/routes"        element={<GymMap />} />
             <Route path="/leaderboard"   element={<Leaderboard />} />
+            <Route path="/search"        element={<Search />} />
+            {/* Bare /profile resolves to your own profile (or the sign-in
+                prompt if logged out) — Profile.jsx falls back to
+                session.user.id when there's no :id param. */}
+            <Route path="/profile"       element={<Profile />} />
             <Route path="/profile/:id"   element={<Profile />} />
           </Routes>
         </main>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../App';
 import { getRecentClips } from '../services/supabase';
 import { supabase } from '../services/supabase';
@@ -171,85 +171,90 @@ function ClipRow({ clip }) {
   const uploader = clip.profiles;
   const playableInline = isDirectVideoUrl(clip.video_url);
 
-  const handleClick = (e) => {
+  const handleClick = () => {
     if (playableInline) {
-      e.preventDefault();
       setExpanded(v => !v);
+    } else if (clip.video_url) {
+      window.open(clip.video_url, '_blank', 'noopener,noreferrer');
     }
-    // otherwise let the <a> follow through and open in a new tab
   };
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-      <a
-        href={clip.video_url}
-        target={playableInline ? undefined : '_blank'}
-        rel="noreferrer"
-        onClick={handleClick}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.6rem',
-          padding: '0.65rem 0.75rem',
-          textDecoration: 'none',
-          color: 'inherit',
-        }}
-      >
-        <img
-          src={uploader?.avatar_url ?? `https://api.dicebear.com/9.x/initials/svg?seed=${uploader?.username ?? 'climber'}`}
-          alt={uploader?.username ?? 'Climber'}
-          className="avatar avatar--sm"
-          style={{ flexShrink: 0 }}
-        />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.65rem 0.75rem' }}>
+        <Link
+          to={`/profile/${uploader?.id}`}
+          onClick={(e) => e.stopPropagation()}
+          style={{ flexShrink: 0, display: 'flex' }}
+        >
+          <img
+            src={uploader?.avatar_url ?? `https://api.dicebear.com/9.x/initials/svg?seed=${uploader?.username ?? 'climber'}`}
+            alt={uploader?.username ?? 'Climber'}
+            className="avatar avatar--sm"
+          />
+        </Link>
 
         <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            background: 'var(--surface-2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
+          role="button"
+          tabIndex={0}
+          onClick={handleClick}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleClick(); }}
+          style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }}
         >
-          {expanded ? (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--text-faint)">
-              <rect x="6" y="5" width="4" height="14" />
-              <rect x="14" y="5" width="4" height="14" />
-            </svg>
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--text-faint)">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-          )}
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <span className="text-xs font-display truncate" style={{ fontWeight: 600 }}>
-              {uploader?.username ?? 'Climber'}
-            </span>
-            <GradePill grade={route?.grade} color={route?.tag_color} />
-            {route?.wall && (
-              <span className="text-xs text-muted truncate">{route.wall}</span>
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: 'var(--surface-2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {expanded ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--text-faint)">
+                <rect x="6" y="5" width="4" height="14" />
+                <rect x="14" y="5" width="4" height="14" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--text-faint)">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
             )}
-            <span className="text-muted text-xs" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-              {timeAgo(clip.created_at)}
-            </span>
           </div>
-          {clip.caption && (
-            <p className="text-xs text-muted truncate" style={{ marginTop: '0.2rem' }}>{clip.caption}</p>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Link
+                to={`/profile/${uploader?.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-xs font-display truncate"
+                style={{ fontWeight: 600, color: 'inherit', textDecoration: 'none' }}
+              >
+                {uploader?.username ?? 'Climber'}
+              </Link>
+              <GradePill grade={route?.grade} color={route?.tag_color} />
+              {route?.wall && (
+                <span className="text-xs text-muted truncate">{route.wall}</span>
+              )}
+              <span className="text-muted text-xs" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                {timeAgo(clip.created_at)}
+              </span>
+            </div>
+            {clip.caption && (
+              <p className="text-xs text-muted truncate" style={{ marginTop: '0.2rem' }}>{clip.caption}</p>
+            )}
+          </div>
+
+          {!playableInline && (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="2" style={{ flexShrink: 0 }}>
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
           )}
         </div>
-
-        {!playableInline && (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="2" style={{ flexShrink: 0 }}>
-            <path d="M9 18l6-6-6-6"/>
-          </svg>
-        )}
-      </a>
+      </div>
       {expanded && playableInline && (
         <video
           src={clip.video_url}
@@ -298,11 +303,16 @@ function MiniPodium({ top3, navigate }) {
           const isFirst = pos === 0;
           return (
             <div key={user.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: isFirst ? 24 : 18 }}>{MEDAL[pos]}</span>
-              <MiniAvatar username={user.username} avatarUrl={user.avatar_url} size={isFirst ? 44 : 36} />
-              <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 11, fontWeight: 700, color: '#F8F7F4', textAlign: 'center', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {user.username}
-              </span>
+              <Link
+                to={`/profile/${user.id}`}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', width: '100%' }}
+              >
+                <span style={{ fontSize: isFirst ? 24 : 18 }}>{MEDAL[pos]}</span>
+                <MiniAvatar username={user.username} avatarUrl={user.avatar_url} size={isFirst ? 44 : 36} />
+                <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 11, fontWeight: 700, color: '#F8F7F4', textAlign: 'center', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user.username}
+                </span>
+              </Link>
               <div style={{ width: '100%', height: PODIUM_H[pos], background: PODIUM_CLR[pos], borderRadius: '6px 6px 0 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: isFirst ? 16 : 13, fontWeight: 800, color: '#141414' }}>
                   {user.totalScore.toLocaleString()}
