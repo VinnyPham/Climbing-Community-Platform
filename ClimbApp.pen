@@ -3,18 +3,6 @@
   "children": [
     {
       "type": "frame",
-      "id": "bi8Au",
-      "x": 0,
-      "y": 0,
-      "name": "Frame",
-      "clip": true,
-      "width": 800,
-      "height": 600,
-      "fill": "#FFFFFF",
-      "layout": "none"
-    },
-    {
-      "type": "frame",
       "id": "F55fB9",
       "x": 840,
       "y": 0,
@@ -6382,6 +6370,289 @@
       "fontFamily": "Space Grotesk",
       "fontSize": 16,
       "fontWeight": "700"
+    },
+    {
+      "type": "frame",
+      "id": "Kljqi",
+      "x": 4824,
+      "y": 0,
+      "name": "Search — signed out (live)",
+      "context": "div",
+      "clip": true,
+      "width": 954,
+      "height": 1713,
+      "fill": "#0d0d0d",
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "s6bGpU",
+          "name": "nav",
+          "context": "TopNav - nav",
+          "width": "fill_container",
+          "fill": "#0d0d0de0",
+          "stroke": "#2a2a2a",
+          "strokeWidth": {
+            "bottom": 1
+          },
+          "strokeAlignment": "inner",
+          "effect": {
+            "type": "background_blur",
+            "radius": 12
+          },
+          "layout": "vertical",
+          "padding": [
+            0,
+            0,
+            1,
+            0
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "d9heWb",
+              "name": "div",
+              "context": "div",
+              "width": 680,
+              "height": 56,
+              "padding": [
+                0,
+                24
+              ],
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "us5ZJ",
+                  "name": "⬡ Hangar18",
+                  "context": "Link - a",
+                  "fill": "#e8ff47",
+                  "content": "⬡ Hangar18",
+                  "lineHeight": 1.5,
+                  "fontFamily": "Space Grotesk",
+                  "fontSize": 19.2,
+                  "fontWeight": "700",
+                  "letterSpacing": -0.38
+                },
+                {
+                  "type": "frame",
+                  "id": "fIviL",
+                  "name": "div",
+                  "context": "div",
+                  "gap": 24,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "kchKd",
+                      "name": "Home",
+                      "context": "Link - a",
+                      "fill": "#888888",
+                      "content": "Home",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "text",
+                      "id": "PQzl9",
+                      "name": "Search",
+                      "context": "Link - a",
+                      "fill": "#f5f5f5",
+                      "content": "Search",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "text",
+                      "id": "a8gdGp",
+                      "name": "Routes",
+                      "context": "Link - a",
+                      "fill": "#888888",
+                      "content": "Routes",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "text",
+                      "id": "C4cFp",
+                      "name": "Leaderboard",
+                      "context": "Link - a",
+                      "fill": "#888888",
+                      "content": "Leaderboard",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "500"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "HX5HO",
+                      "name": "Sign in",
+                      "context": "button",
+                      "height": 36,
+                      "fill": "#e8ff47",
+                      "cornerRadius": 6,
+                      "layout": "vertical",
+                      "padding": [
+                        6.4,
+                        14.4
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "R9GfYD",
+                          "fill": "#0d0d0d",
+                          "content": "Sign in",
+                          "lineHeight": 1.5,
+                          "textAlign": "center",
+                          "fontFamily": "Space Grotesk",
+                          "fontSize": 14.4,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "LHkQX",
+          "name": "main",
+          "context": "Location - main",
+          "width": "fill_container",
+          "layout": "vertical",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "G3DcQS",
+              "name": "div",
+              "context": "Search - div",
+              "width": 430,
+              "height": 1656,
+              "fill": "#141414",
+              "layout": "vertical",
+              "padding": [
+                0,
+                0,
+                90,
+                0
+              ],
+              "children": [
+                {
+                  "type": "rectangle",
+                  "id": "j1mgN",
+                  "name": "div",
+                  "context": "div",
+                  "fill": "#ffd600",
+                  "width": "fill_container",
+                  "height": 3
+                },
+                {
+                  "type": "frame",
+                  "id": "f83gc",
+                  "name": "div",
+                  "context": "div",
+                  "width": "fill_container",
+                  "height": 162.5,
+                  "layout": "vertical",
+                  "gap": 12,
+                  "padding": [
+                    20,
+                    20,
+                    12,
+                    20
+                  ],
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "i7bcJ",
+                      "name": "Find climbers",
+                      "context": "div",
+                      "fill": "#f8f7f4",
+                      "content": "Find climbers",
+                      "lineHeight": 1.5,
+                      "fontFamily": "Inter",
+                      "fontSize": 20,
+                      "fontWeight": "800"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "KPf7K",
+                      "name": "Search by username",
+                      "context": "input",
+                      "clip": true,
+                      "width": "fill_container",
+                      "height": 48.5,
+                      "fill": "#1a1a1a",
+                      "cornerRadius": 12,
+                      "stroke": "#2a2a2a",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "layout": "vertical",
+                      "padding": [
+                        12,
+                        14
+                      ],
+                      "justifyContent": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "x2mXVv",
+                          "fill": "#757575",
+                          "content": "Search by username",
+                          "lineHeight": 1.5,
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "OW4tz",
+                  "name": "Start typing a username to find other cl",
+                  "context": "div",
+                  "width": "fill_container",
+                  "height": 61,
+                  "layout": "vertical",
+                  "padding": 20,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "L4bIC",
+                      "fill": "#555555",
+                      "content": "Start typing a username to find other climbers.",
+                      "lineHeight": 1.5,
+                      "textAlign": "center",
+                      "fontFamily": "Inter",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "fileToken": "9be7f379-177f-49d2-bd52-306a51755e23"
