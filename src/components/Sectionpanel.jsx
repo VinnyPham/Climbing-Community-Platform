@@ -90,9 +90,10 @@ async function compressVideo(file, onProgress) {
     await ffmpeg.exec([
       '-i', inputName,
       '-vcodec', 'libx264',
-      '-crf', '30',
-      '-preset', 'veryfast',
-      '-vf', "scale='min(1280,iw)':-2",
+      '-crf', '32',
+      '-preset', 'ultrafast',
+      '-vf', "scale='min(960,iw)':-2",
+      '-r', '30',
       '-acodec', 'aac',
       '-b:a', '96k',
       outputName,
