@@ -223,3 +223,43 @@ export const uploadClipVideo = async (userId, file) => {
   const { data } = supabase.storage.from('clips').getPublicUrl(path);
   return data.publicUrl;
 };
+
+export const getClipComments = async (clipId) => {
+  return supabase
+    .from('clip_comments')
+    .select(`
+      id,
+      content,
+      created_at,
+      user_id,
+      profiles (
+        id,
+        username,
+        avatar_url
+      )
+    `)
+    .eq('clip_id', clipId)
+    .order('created_at', { ascending: true });
+};
+
+export const addClipComment = async (clipId, userId, content) => {
+  return supabase
+    .from('clip_comments')
+    .insert({
+      clip_id: clipId,
+      user_id: userId,
+      content: content.trim(),
+    })
+    .select(`
+      id,
+      content,
+      created_at,
+      user_id,
+      profiles (
+        id,
+        username,
+        avatar_url
+      )
+    `)
+    .single();
+};
