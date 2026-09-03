@@ -1,11 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-// Initialize Supabase — replace with your project URL and anon key
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { useParams, Link } from "react-router-dom";
+import { useAuth } from "../App";
+import { supabase, getUserClips } from "../services/supabase";
 
 // ── Grade color map (V-scale) ──────────────────────────────────────────────
 const GRADE_COLORS = {
@@ -162,7 +158,7 @@ function GradePill({ grade, count }) {
 // ── Log entry row ──────────────────────────────────────────────────────────
 function LogRow({
   entry, isEditing, editAttempts, onStartEdit, onCancelEdit, onChangeAttempts, onSaveEdit, saving, error,
-  isDeleting, onRequestDelete, onCancelDelete, onConfirmDelete, deleting,
+  isDeleting, onRequestDelete, onCancelDelete, onConfirmDelete, deleting, showActions = true,
 }) {
   const grade = normalizeGrade(entry.grade ?? entry.routes?.grade);
   const color = GRADE_COLORS[grade] ?? "#aaa";
@@ -226,36 +222,38 @@ function LogRow({
             </button>
           </div>
         ) : !isEditing ? (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={onStartEdit}
-              style={{
-                border: "1px solid #2A2A2A",
-                borderRadius: 12,
-                padding: "8px 12px",
-                fontSize: 12,
-                color: "#F8F7F4",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => onRequestDelete(entry.id)}
-              style={{
-                border: "1px solid #2A2A2A",
-                borderRadius: 12,
-                padding: "8px 12px",
-                fontSize: 12,
-                color: "#F8F7F4",
-                background: "transparent",
-                cursor: "pointer",
-              }}
-            >
-              Delete
-            </button>
-          </div>
+          showActions && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={onStartEdit}
+                style={{
+                  border: "1px solid #2A2A2A",
+                  borderRadius: 12,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  color: "#F8F7F4",
+                  background: "transparent",
+                  cursor: "pointer",
+                }}
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => onRequestDelete(entry.id)}
+                style={{
+                  border: "1px solid #2A2A2A",
+                  borderRadius: 12,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  color: "#F8F7F4",
+                  background: "transparent",
+                  cursor: "pointer",
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          )
         ) : (
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -320,15 +318,101 @@ function LogRow({
   );
 }
 
+// A direct video file can be played inline with a plain <video> tag.
+// A link to something like YouTube/Instagram needs its own embed, which is
+// out of scope here, so those open in a new tab instead.
+function isDirectVideoUrl(url) {
+  if (!url) return false;
+  return /\.(mp4|mov|webm|m4v|ogg)(\?.*)?$/i.test(url) || url.includes("/storage/v1/object/");
+}
+
+// ── Clip row (Clips tab) ────────────────────────────────────────────────────
+function ClipRow({ clip }) {
+  const [expanded, setExpanded] = useState(false);
+  const route = clip.routes || clip.route;
+  const grade = normalizeGrade(route?.grade);
+  const color = GRADE_COLORS[grade] ?? "#aaa";
+  const playableInline = isDirectVideoUrl(clip.video_url);
+  const date = new Date(clip.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  const handleClick = () => {
+    if (playableInline) {
+      setExpanded((v) => !v);
+    } else if (clip.video_url) {
+      window.open(clip.video_url, "_blank", "noopener,noreferrer");
+    }
+  };
+
+  return (
+    <div style={{ borderBottom: "1px solid #2A2A2A" }}>
+      <div
+        onClick={handleClick}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") handleClick(); }}
+        style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", cursor: "pointer" }}
+      >
+        <div style={{
+          width: 36, height: 36, borderRadius: 10,
+          background: `${color}22`, border: `1.5px solid ${color}`,
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        }}>
+          {expanded ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill={color}>
+              <rect x="6" y="5" width="4" height="14" />
+              <rect x="14" y="5" width="4" height="14" />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill={color}>
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+          )}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, color: "#F8F7F4", fontSize: 14 }}>
+            {grade ?? "Unknown grade"}
+          </div>
+          <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>
+            {date}{clip.caption ? ` · ${clip.caption}` : ""}
+          </div>
+        </div>
+        {!playableInline && (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" style={{ flexShrink: 0 }}>
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        )}
+      </div>
+      {expanded && playableInline && (
+        <video
+          src={clip.video_url}
+          controls
+          autoPlay
+          playsInline
+          style={{ width: "100%", display: "block", background: "#000", maxHeight: 320, marginBottom: 10, borderRadius: 8 }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Main Profile component ─────────────────────────────────────────────────
 export default function Profile() {
-  const [session, setSession] = useState(null);
+  const { id: paramId } = useParams();
+  const { session, login, logout, loading: authLoading } = useAuth();
+
+  // Whose profile this is: the URL param if present, otherwise fall back to
+  // your own id (so the bare /profile route — used by the bottom nav before
+  // your own id is known — still resolves to you).
+  const viewedUserId = paramId || session?.user?.id || null;
+  const isOwnProfile = !!session && session.user.id === viewedUserId;
+
   const [profile, setProfile] = useState(null);
+  const [notFound, setNotFound] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [clips, setClips] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [signingIn, setSigningIn] = useState(false);
   const [statsError, setStatsError] = useState(null);
-  const [activeTab, setActiveTab] = useState("stats"); // stats | log
+  const [activeTab, setActiveTab] = useState("stats"); // stats | log | clips
 
   const [editingSendId, setEditingSendId] = useState(null);
   const [editAttempts, setEditAttempts] = useState(1);
@@ -344,85 +428,90 @@ export default function Profile() {
   const [draftAvatarPreview, setDraftAvatarPreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [signingIn, setSigningIn] = useState(false);
   const fileInputRef = useRef(null);
 
-  // ── Auth ────────────────────────────────────────────────────────────────
+  // ── Load data for whichever profile is being viewed ─────────────────────
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+    if (authLoading) return; // wait for session to resolve before deciding isOwnProfile
+    if (!viewedUserId) { setLoading(false); return; }
 
-  // ── Load data when session exists ───────────────────────────────────────
-  useEffect(() => {
-  console.log("EFFECT RUNNING, supabase version check");
-  if (!session) { setLoading(false); return; }
-  (async () => {
-    setLoading(true);
-    const uid = session.user.id;
+    (async () => {
+      setLoading(true);
+      setNotFound(false);
 
-    let { data: prof, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", uid)
-      .maybeSingle();
-    if (error) {
-      console.error("Profile load error:", error);
-    }
-
-    if (!prof) {
-      const { data: newProf, error: insertErr } = await supabase
+      let { data: prof, error } = await supabase
         .from("profiles")
-        .insert({ id: uid, display_name: session.user.user_metadata?.full_name })
-        .select()
+        .select("*")
+        .eq("id", viewedUserId)
         .maybeSingle();
-      if (insertErr) {
-        console.error("Profile insert error:", insertErr);
+      if (error) {
+        console.error("Profile load error:", error);
       }
-      prof = newProf;
-    }
-    setProfile(prof);
 
-    const { data: sends, error: sendsError } = await supabase
-      .from("sends")
-      .select(`*, routes(*)`)
-      .eq("user_id", uid)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    console.log("Profile sends load", { uid, count: sends?.length, sendsError });
-    if (sendsError) {
-      console.error("Profile sends load error:", sendsError);
-      setStatsError(sendsError.message || "Unable to load sends.");
-    } else {
-      setStatsError(null);
-    }
-    const dedupedSends = dedupeSendsByRoute(sends ?? []);
-    setLogs(dedupedSends.map(entry => ({
-      ...entry,
-      route_name: entry.routes?.name ?? "Unnamed route",
-      grade: normalizeGrade(entry.routes?.grade ?? entry.grade),
-    })));
-    setLoading(false);
-  })();
-}, [session]);
+      // Only auto-create a missing profile row for yourself — App.jsx's
+      // AuthProvider normally does this on sign-in already, this is just a
+      // defensive fallback. Someone else's missing profile is a real "not
+      // found", not something we should create on their behalf.
+      if (!prof && isOwnProfile) {
+        const { data: newProf, error: insertErr } = await supabase
+          .from("profiles")
+          .insert({ id: viewedUserId, display_name: session.user.user_metadata?.full_name })
+          .select()
+          .maybeSingle();
+        if (insertErr) {
+          console.error("Profile insert error:", insertErr);
+        }
+        prof = newProf;
+      }
+
+      if (!prof) {
+        setNotFound(true);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+      setProfile(prof);
+
+      const { data: sends, error: sendsError } = await supabase
+        .from("sends")
+        .select(`*, routes(*)`)
+        .eq("user_id", viewedUserId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (sendsError) {
+        console.error("Profile sends load error:", sendsError);
+        setStatsError(sendsError.message || "Unable to load sends.");
+      } else {
+        setStatsError(null);
+      }
+      const dedupedSends = dedupeSendsByRoute(sends ?? []);
+      setLogs(dedupedSends.map(entry => ({
+        ...entry,
+        route_name: entry.routes?.name ?? "Unnamed route",
+        grade: normalizeGrade(entry.routes?.grade ?? entry.grade),
+      })));
+
+      const { data: clipsData, error: clipsError } = await getUserClips(viewedUserId);
+      if (clipsError) {
+        console.error("Profile clips load error:", clipsError);
+        setClips([]);
+      } else {
+        setClips(clipsData ?? []);
+      }
+
+      setLoading(false);
+    })();
+  }, [viewedUserId, isOwnProfile, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const signInWithGoogle = async () => {
     setSigningIn(true);
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.href },
-    });
+    await login();
     setSigningIn(false);
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setProfile(null);
-    setLogs([]);
+    await logout();
   };
 
   // ── Edit handlers ────────────────────────────────────────────────────────
@@ -741,8 +830,8 @@ export default function Profile() {
     },
   };
 
-  // ── Not signed in ────────────────────────────────────────────────────────
-  if (!session && !loading) {
+  // ── Not signed in, and no specific profile requested ─────────────────────
+  if (!authLoading && !viewedUserId) {
     return (
       <div style={s.root}>
         <div style={{
@@ -775,7 +864,7 @@ export default function Profile() {
     );
   }
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div style={{ ...s.root, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ color: "#555", fontSize: 14 }}>Loading…</div>
@@ -783,9 +872,21 @@ export default function Profile() {
     );
   }
 
-  const avatarUrl = profile?.avatar_url ?? session?.user?.user_metadata?.avatar_url;
-  const displayName = profile?.username ?? profile?.display_name ?? session?.user?.user_metadata?.full_name ?? "Climber";
-  const email = session?.user?.email ?? "";
+  if (notFound) {
+    return (
+      <div style={{ ...s.root, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12 }}>
+        <div style={{ color: "#9CA3AF", fontSize: 14 }}>This climber couldn't be found.</div>
+        <Link to="/" style={{ color: "#FFD600", fontSize: 13, fontWeight: 600 }}>Back home</Link>
+      </div>
+    );
+  }
+
+  // Fall back to session metadata (Google name/avatar) only for your own
+  // profile — using it for someone else's page would leak the viewer's own
+  // info onto a stranger's profile.
+  const avatarUrl = profile?.avatar_url ?? (isOwnProfile ? session?.user?.user_metadata?.avatar_url : null);
+  const displayName = profile?.username ?? profile?.display_name ?? (isOwnProfile ? session?.user?.user_metadata?.full_name : null) ?? "Climber";
+  const email = isOwnProfile ? (session?.user?.email ?? "") : "";
 
   // ── Signed-in view ───────────────────────────────────────────────────────
   return (
@@ -797,7 +898,7 @@ export default function Profile() {
 
       {/* Header */}
       <div style={s.header}>
-        <button onClick={signOut} style={s.signOutBtn}>Sign out</button>
+        {isOwnProfile && <button onClick={signOut} style={s.signOutBtn}>Sign out</button>}
 
         {/* Avatar + name row */}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -807,17 +908,17 @@ export default function Profile() {
               ? <img
                   src={draftAvatarPreview ?? avatarUrl}
                   alt="avatar"
-                  style={{ ...s.avatar, cursor: editing ? "pointer" : "default" }}
-                  onClick={() => editing && fileInputRef.current?.click()}
+                  style={{ ...s.avatar, cursor: isOwnProfile && editing ? "pointer" : "default" }}
+                  onClick={() => isOwnProfile && editing && fileInputRef.current?.click()}
                 />
               : <div
-                  style={{ ...s.avatar, cursor: editing ? "pointer" : "default" }}
-                  onClick={() => editing && fileInputRef.current?.click()}
+                  style={{ ...s.avatar, cursor: isOwnProfile && editing ? "pointer" : "default" }}
+                  onClick={() => isOwnProfile && editing && fileInputRef.current?.click()}
                 >
                   {displayName.charAt(0).toUpperCase()}
                 </div>
             }
-            {editing && (
+            {isOwnProfile && editing && (
               <div
                 onClick={() => fileInputRef.current?.click()}
                 style={{
@@ -869,7 +970,7 @@ export default function Profile() {
             ) : (
               <>
                 <div style={s.name}>{displayName}</div>
-                <div style={s.handle}>{email}</div>
+                {email && <div style={s.handle}>{email}</div>}
                 {highestGrade && (
                   <div style={{
                     marginTop: 6, display: "inline-flex", alignItems: "center", gap: 5,
@@ -887,47 +988,49 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Edit / Save / Cancel buttons */}
-        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          {editing ? (
-            <>
+        {/* Edit / Save / Cancel buttons — own profile only */}
+        {isOwnProfile && (
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            {editing ? (
+              <>
+                <button
+                  onClick={saveProfile}
+                  disabled={saving}
+                  style={{
+                    flex: 1, padding: "10px 0", borderRadius: 12,
+                    background: "#FFD600", border: "none",
+                    color: "#141414", fontWeight: 700, fontSize: 14, cursor: "pointer",
+                    opacity: saving ? 0.6 : 1,
+                  }}
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+                <button
+                  onClick={cancelEdit}
+                  disabled={saving}
+                  style={{
+                    flex: 1, padding: "10px 0", borderRadius: 12,
+                    background: "#1A1A1A", border: "1px solid #2A2A2A",
+                    color: "#9CA3AF", fontWeight: 600, fontSize: 14, cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
               <button
-                onClick={saveProfile}
-                disabled={saving}
+                onClick={openEdit}
                 style={{
-                  flex: 1, padding: "10px 0", borderRadius: 12,
-                  background: "#FFD600", border: "none",
-                  color: "#141414", fontWeight: 700, fontSize: 14, cursor: "pointer",
-                  opacity: saving ? 0.6 : 1,
-                }}
-              >
-                {saving ? "Saving…" : "Save"}
-              </button>
-              <button
-                onClick={cancelEdit}
-                disabled={saving}
-                style={{
-                  flex: 1, padding: "10px 0", borderRadius: 12,
+                  padding: "9px 20px", borderRadius: 12,
                   background: "#1A1A1A", border: "1px solid #2A2A2A",
-                  color: "#9CA3AF", fontWeight: 600, fontSize: 14, cursor: "pointer",
+                  color: "#9CA3AF", fontWeight: 600, fontSize: 13, cursor: "pointer",
                 }}
               >
-                Cancel
+                Edit profile
               </button>
-            </>
-          ) : (
-            <button
-              onClick={openEdit}
-              style={{
-                padding: "9px 20px", borderRadius: 12,
-                background: "#1A1A1A", border: "1px solid #2A2A2A",
-                color: "#9CA3AF", fontWeight: 600, fontSize: 13, cursor: "pointer",
-              }}
-            >
-              Edit profile
-            </button>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Stat row */}
@@ -949,6 +1052,9 @@ export default function Profile() {
         </button>
         <button style={s.tab(activeTab === "log")} onClick={() => setActiveTab("log")}>
           Climb Log
+        </button>
+        <button style={s.tab(activeTab === "clips")} onClick={() => setActiveTab("clips")}>
+          Clips
         </button>
       </div>
 
@@ -990,20 +1096,42 @@ export default function Profile() {
                 <LogRow
                   key={entry.id ?? i}
                   entry={entry}
-                  isEditing={editingSendId === entry.id}
+                  isEditing={isOwnProfile && editingSendId === entry.id}
                   editAttempts={editAttempts}
-                  onStartEdit={() => beginEditSend(entry)}
+                  onStartEdit={isOwnProfile ? () => beginEditSend(entry) : undefined}
                   onCancelEdit={cancelEditSend}
                   onChangeAttempts={setEditAttempts}
                   onSaveEdit={saveEditedSend}
                   saving={sendSaving}
                   error={(editingSendId === entry.id || deletingSendId === entry.id) ? sendError : null}
-                  isDeleting={deletingSendId === entry.id}
-                  onRequestDelete={requestDeleteSend}
+                  isDeleting={isOwnProfile && deletingSendId === entry.id}
+                  onRequestDelete={isOwnProfile ? requestDeleteSend : undefined}
                   onCancelDelete={cancelDeleteSend}
                   onConfirmDelete={confirmDeleteSend}
                   deleting={sendDeleting}
+                  showActions={isOwnProfile}
                 />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Clips tab ── */}
+      {activeTab === "clips" && (
+        <div style={s.section}>
+          <div style={s.sectionTitle}>Clips</div>
+          {clips.length === 0 ? (
+            <div style={{
+              textAlign: "center", padding: "36px 0",
+              color: "#444", fontSize: 14,
+            }}>
+              No clips yet.
+            </div>
+          ) : (
+            <div>
+              {clips.map((clip) => (
+                <ClipRow key={clip.id} clip={clip} />
               ))}
             </div>
           )}

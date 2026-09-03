@@ -52,6 +52,14 @@ export const onAuthChange = (callback) =>
 export const getProfile = (userId) =>
   supabase.from('profiles').select('*').eq('id', userId).single();
 
+export const searchProfiles = (query, limit = 20) =>
+  supabase
+    .from('profiles')
+    .select('id, username, avatar_url')
+    .ilike('username', `%${query}%`)
+    .order('username', { ascending: true })
+    .limit(limit);
+
 export const upsertProfile = (profile) =>
   supabase.from('profiles').upsert(profile, { onConflict: 'id' });
 
