@@ -29,3 +29,6 @@ dist-ssr
 *.sw?
 
 .env
+
+# Personal working notes — never commit
+private-notes/
