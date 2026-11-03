@@ -50,7 +50,30 @@ export const onAuthChange = (callback) =>
 // Table: profiles (id uuid PK → auth.users.id, username text, avatar_url text, bio text, created_at timestamptz)
 
 export const getProfile = (userId) =>
-  supabase.from('profiles').select('*').eq('id', userId).single();
+  supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+
+export const ensureProfile = async (user) => {
+  const { data: existingProfile, error: profileError } = await getProfile(user.id);
+  if (profileError) return { data: null, error: profileError };
+  if (existingProfile) return { data: existingProfile, error: null };
+
+  const metadata = user.user_metadata ?? {};
+  const username =
+    metadata.full_name ||
+    metadata.name ||
+    user.email?.split('@')[0] ||
+    `climber-${user.id.slice(0, 8)}`;
+  const avatarUrl = metadata.avatar_url ?? metadata.picture ?? null;
+
+  return supabase
+    .from('profiles')
+    .upsert(
+      { id: user.id, username, avatar_url: avatarUrl },
+      { onConflict: 'id' },
+    )
+    .select()
+    .single();
+};
 
 export const searchProfiles = (query, limit = 20) =>
   supabase

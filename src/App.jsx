@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { supabase, signInWithGoogle, signOut, getProfile, upsertProfile } from './services/supabase';
+import { supabase, signInWithGoogle, signOut, ensureProfile } from './services/supabase';
 
 import Home from './pages/Home';
 import GymMap from './pages/GymMap';
@@ -17,40 +17,32 @@ function AuthProvider({ children }) {
   const [session, setSession] = useState(undefined);
   const [profile, setProfile] = useState(null);
 
+  async function loadProfile(user) {
+    const { data, error } = await ensureProfile(user);
+    if (error) {
+      console.error('Profile initialization error:', error);
+      setProfile(null);
+      return;
+    }
+    setProfile(data);
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) loadProfile(session.user);
+      if (session) void loadProfile(session.user);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) await loadProfile(session.user);
+      if (session) {
+        setTimeout(() => void loadProfile(session.user), 0);
+      }
       else setProfile(null);
     });
 
     return () => subscription.unsubscribe();
   }, []);
-
-  const loadProfile = async (user) => {
-    const { data } = await getProfile(user.id);
-    const defaultUsername = user.user_metadata?.full_name ?? user.email.split('@')[0];
-    const defaultAvatar = user.user_metadata?.avatar_url ?? null;
-    const defaultDisplayName = user.user_metadata?.full_name ?? defaultUsername;
-
-    if (!data) {
-      await upsertProfile({
-        id: user.id,
-        username: defaultUsername,
-        display_name: defaultDisplayName,
-        avatar_url: defaultAvatar,
-      });
-      const { data: newProfile } = await getProfile(user.id);
-      setProfile(newProfile);
-    } else {
-      setProfile(data);
-    }
-  };
 
   const login  = () => signInWithGoogle();
   const logout = async () => { await signOut(); setProfile(null); };
@@ -96,7 +88,7 @@ function MobileHeader() {
     <header className="mobile-header">
       <span className="mobile-header__logo">⬡ Hangar18</span>
       {session ? (
-        <NavLink to={`/profile/${profile?.id}`}>
+        <NavLink to={profile?.id ? `/profile/${profile.id}` : '/profile'}>
           <img
             src={profile?.avatar_url ?? `https://api.dicebear.com/9.x/initials/svg?seed=${profile?.username}`}
             alt={profile?.username}
@@ -122,7 +114,7 @@ function BottomNav() {
     { to: '/search',       label: 'Search',      Icon: IconSearch },
     { to: '/routes',       label: 'Routes',      Icon: IconRoutes },
     { to: '/leaderboard',  label: 'Leaderboard', Icon: IconLeaderboard },
-    { to: session ? `/profile/${profile?.id}` : '/profile', label: 'Me', Icon: IconProfile },
+    { to: session && profile?.id ? `/profile/${profile.id}` : '/profile', label: 'Me', Icon: IconProfile },
   ];
 
   return (
@@ -159,7 +151,7 @@ function TopNav() {
             );
           })}
           {session ? (
-            <NavLink to={`/profile/${profile?.id}`} className="top-nav__link">
+            <NavLink to={profile?.id ? `/profile/${profile.id}` : '/profile'} className="top-nav__link">
               <img
                 src={profile?.avatar_url ?? `https://api.dicebear.com/9.x/initials/svg?seed=${profile?.username}`}
                 alt={profile?.username}

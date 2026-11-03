@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "../App";
-import { supabase, getUserClips } from "../services/supabase";
+import { supabase, ensureProfile, getUserClips } from "../services/supabase";
 
 // ── Grade color map (V-scale) ──────────────────────────────────────────────
 const GRADE_COLORS = {
@@ -454,13 +454,9 @@ export default function Profile() {
       // defensive fallback. Someone else's missing profile is a real "not
       // found", not something we should create on their behalf.
       if (!prof && isOwnProfile) {
-        const { data: newProf, error: insertErr } = await supabase
-          .from("profiles")
-          .insert({ id: viewedUserId, display_name: session.user.user_metadata?.full_name })
-          .select()
-          .maybeSingle();
+        const { data: newProf, error: insertErr } = await ensureProfile(session.user);
         if (insertErr) {
-          console.error("Profile insert error:", insertErr);
+          console.error("Profile initialization error:", insertErr);
         }
         prof = newProf;
       }
